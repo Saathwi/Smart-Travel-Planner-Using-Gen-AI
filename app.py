@@ -1,5 +1,5 @@
 import streamlit as st
-from utils.map_utils import show_map
+from utils.map_utils import show_map, get_coordinates, display_route_map
 from utils.ai_utils import get_response
 from auth import register_user, authenticate_user, load_users
 import re
@@ -7,7 +7,6 @@ import json
 from scraper.makemytrip_fli_scraper import FlightScraper
 from scraper.hotel_search import show_hotel_search
 from datetime import datetime
-from utils.map_utils import display_map_in_chat
 
 # Set page config must be the very first Streamlit command
 st.set_page_config(
@@ -96,7 +95,6 @@ def chatbot_page():
     st.sidebar.title(f"Welcome, {st.session_state.user['username']}! 🎉")
     st.sidebar.header("Search Flights & Hotels")
 
-
     # Flight Search Section
     st.sidebar.subheader("Flight Search")
     source = st.sidebar.text_input("From", key="source")
@@ -183,16 +181,43 @@ def chatbot_page():
     # Display chat history
     for message in st.session_state.chat_history:
         with st.chat_message(message["role"]):
-            st.write(message["content"])
+            if isinstance(message["content"], dict) and message["content"].get("type") == "map":
+                st.write(message["content"]["text"])
+                display_route_map(
+                    message["content"]["map_data"]["origin"],
+                    message["content"]["map_data"]["destination"],
+                    message["content"]["map_data"]["origin_coords"],
+                    message["content"]["map_data"]["dest_coords"]
+                )
+            else:
+                st.write(message["content"])
 
     # Chat input
     user_query = st.chat_input("How can I assist you with your travel plans?", key="chat_input")
     if user_query:
         st.session_state.chat_history.append({"role": "user", "content": user_query})
         response = get_response(user_query, st.session_state.chat_history)
-        st.session_state.chat_history.append({"role": "assistant", "content": response})
-        with st.chat_message("assistant"):
-            st.write(response)
+
+        if isinstance(response, dict) and response.get("type") == "map":
+            st.session_state.chat_history.append({
+                "role": "assistant",
+                "content": response
+            })
+            with st.chat_message("assistant"):
+                st.write(response["text"])
+                display_route_map(
+                    response["map_data"]["origin"],
+                    response["map_data"]["destination"],
+                    response["map_data"]["origin_coords"],
+                    response["map_data"]["dest_coords"]
+                )
+        else:
+            st.session_state.chat_history.append({
+                "role": "assistant",
+                "content": response
+            })
+            with st.chat_message("assistant"):
+                st.write(response)
 
 
 def logout():
