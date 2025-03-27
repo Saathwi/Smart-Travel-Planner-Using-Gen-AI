@@ -1,103 +1,79 @@
+# utils/map_utils.py
 import folium
 from streamlit_folium import st_folium
-import pandas as pd
-from pathlib import Path
-from geopy.distance import geodesic
-import streamlit as st  # Added this import
+import streamlit as st
+from geopy.geocoders import Nominatim
+import time
 
 
-# Load airport data from CSV
-def load_airport_data():
+def get_coordinates(location_name):
+    """Get latitude and longitude for a location name."""
+    geolocator = Nominatim(user_agent="travel_planner")
     try:
-        csv_path = Path(__file__).parent / 'airport_data.csv'  # Adjust path as needed
-        df = pd.read_csv(csv_path)
-        # Fixed the column selection syntax
-        return df.set_index('iata_code')[['latitude_deg', 'longitude_deg']].to_dict('index')
+        location = geolocator.geocode(location_name)
+        if location:
+            return (location.latitude, location.longitude)
+        return None
     except Exception as e:
-        print(f"Failed to load airport data: {str(e)}")  # Changed from st.error to print
-        return {}
+        st.error(f"Geocoding error: {str(e)}")
+        return None
 
 
-# Preload airport coordinates
-AIRPORT_COORDS = load_airport_data()
-
-
-def get_coordinates(location):
-    """
-    Get coordinates for a location (can be city name or airport code)
-    Returns (lat, lon) or None if not found
-    """
-    # First try as airport code
-    if location.upper() in AIRPORT_COORDS:
-        coords = AIRPORT_COORDS[location.upper()]
-        return (coords['latitude_deg'], coords['longitude_deg'])
-
-    # If not found, implement city name lookup here if needed
-    # You could add a city-to-airport mapping dictionary
+def show_map(location=None, zoom_start=12):
+    """Show a map centered at the given location."""
+    if location:
+        m = folium.Map(location=location, zoom_start=zoom_start)
+        folium.Marker(location).add_to(m)
+        return st_folium(m, width=700, height=500)
     return None
 
 
-def show_map(source, destination):
+def create_route_map(origin, destination, origin_coords, dest_coords):
     """
-    Create and display a folium map between two locations
+    Create a folium map showing route between two locations.
+
     Args:
-        source: Source location (city name or airport code)
-        destination: Destination location (city name or airport code)
+        origin: Name of origin location (str)
+        destination: Name of destination location (str)
+        origin_coords: Tuple of (lat, lon) for origin
+        dest_coords: Tuple of (lat, lon) for destination
+
+    Returns:
+        folium.Map object
     """
-    # Get coordinates
-    source_coords = get_coordinates(source)
-    dest_coords = get_coordinates(destination)
+    # Create map centered between the two points
+    midpoint = [(origin_coords[0] + dest_coords[0]) / 2,
+                (origin_coords[1] + dest_coords[1]) / 2]
 
-    if not source_coords or not dest_coords:
-        return None, "Could not find coordinates for one or both locations"
-
-    # Calculate midpoint for centering
-    midpoint = [(source_coords[0] + dest_coords[0]) / 2,
-                (source_coords[1] + dest_coords[1]) / 2]
-
-    # Create map
-    travel_map = folium.Map(location=midpoint, zoom_start=6)
+    m = folium.Map(location=midpoint, zoom_start=7)
 
     # Add markers
     folium.Marker(
-        location=source_coords,
-        popup=f"Departure: {source}",
-        icon=folium.Icon(color="green", icon="plane", prefix="fa")
-    ).add_to(travel_map)
+        origin_coords,
+        popup=origin,
+        icon=folium.Icon(color='green', icon='flag')
+    ).add_to(m)
 
     folium.Marker(
-        location=dest_coords,
-        popup=f"Destination: {destination}",
-        icon=folium.Icon(color="red", icon="hotel", prefix="fa")
-    ).add_to(travel_map)
+        dest_coords,
+        popup=destination,
+        icon=folium.Icon(color='red', icon='flag')
+    ).add_to(m)
 
-    # Add route line
+    # Add line between points
     folium.PolyLine(
-        locations=[source_coords, dest_coords],
-        color="blue",
+        locations=[origin_coords, dest_coords],
+        color='blue',
         weight=2.5,
-        opacity=1,
-        dash_array='5,5'
-    ).add_to(travel_map)
+        opacity=1
+    ).add_to(m)
 
-    # Calculate distance
-    distance_km = geodesic(source_coords, dest_coords).km
-
-    return travel_map, distance_km
+    return m
 
 
-def display_map_in_chat(source, destination):
+def display_route_map(origin, destination, origin_coords, dest_coords):
     """
-    Display map directly in Streamlit chat
+    Display the route map in Streamlit.
     """
-    map_obj, distance = show_map(source, destination)
-
-    if map_obj is None:
-        st.error(distance)  # Now we can use st.error here
-        return
-
-    with st.chat_message("assistant"):
-        st.write(f"### Route from {source.upper()} to {destination.upper()}")
-        st_folium(map_obj, width=700, height=400)
-        st.write(f"**Approximate distance:** {distance:.0f} km")
-        st.write("*Note: Route shows straight-line distance between airports*")
+    map_obj = create_route_map(origin, destination, origin_coords, dest_coords)
+    st_folium(map_obj, width=700, height=500)
