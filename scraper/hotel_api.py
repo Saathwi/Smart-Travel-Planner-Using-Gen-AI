@@ -3,7 +3,8 @@ from bs4 import BeautifulSoup
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import urljoin, urlparse
+
 
 class HotelScraper:
     def __init__(self):
@@ -21,6 +22,12 @@ class HotelScraper:
         }
         self.base_url = "https://www.booking.com"
 
+    def _clean_url(self, href):
+        """Ensure URLs are properly formatted"""
+        if href.startswith('http'):
+            return href
+        return urljoin(self.base_url, href.lstrip('/'))
+
     def search_hotels(self, destination, check_in, nights, budget=None, min_rating=None):
         try:
             # Find the destination in our airport mapping
@@ -28,7 +35,7 @@ class HotelScraper:
             if normalized_dest not in self.airport_mapping:
                 # Try to find a matching city name in the airport mapping
                 matching_cities = [city for city in self.airport_mapping.keys()
-                                 if normalized_dest in city.lower()]
+                                   if normalized_dest in city.lower()]
                 if not matching_cities:
                     return {"error": f"Could not find destination {destination} in our database"}
 
@@ -39,26 +46,25 @@ class HotelScraper:
             airport_name = self.airport_mapping[normalized_dest]["name"]
             city_name = airport_name.split(" Airport")[0].split(" International")[0].strip()
 
-            # Calculate check-out date (fixed syntax error here)
+            # Calculate check-out date
             check_out = (datetime.strptime(check_in, "%Y-%m-%d") +
-                        timedelta(days=nights)).strftime("%Y-%m-%d")
+                         timedelta(days=nights)).strftime("%Y-%m-%d")
 
             # Build search URL
             search_url = f"{self.base_url}/searchresults.en-gb.html"
             params = {
                 "ss": city_name,
                 "checkin": check_in,
-                "checkout": check_out,  # Fixed variable name (was check_out_str)
+                "checkout": check_out,
                 "group_adults": "2",
                 "group_children": "0",
                 "no_rooms": "1",
                 "order": "popularity",
-                "nflt": f"review_score={min_rating*20 if min_rating else ''}"
+                "nflt": f"review_score={min_rating * 20 if min_rating else ''}"
             }
 
             if budget:
-                params["nflt"] += f";price={budget}-{budget*2}"
-
+                params["nflt"] += f";price={budget}-{budget * 2}"
 
             # Make the search request
             resp = requests.get(search_url, headers=self.headers, params=params)
@@ -76,7 +82,10 @@ class HotelScraper:
                     # Name and link
                     name_elem = listing.find("div", {"data-testid": "title"})
                     hotel["name"] = name_elem.text.strip()
-                    hotel["link"] = self.base_url + name_elem.parent["href"]
+
+                    # Get and clean the URL
+                    href = name_elem.parent.get("href", "")
+                    hotel["link"] = self._clean_url(href) if href else ""
 
                     # Address
                     address_elem = listing.find("span", {"data-testid": "address"})
@@ -94,6 +103,10 @@ class HotelScraper:
                     photo_elem = listing.find("img", {"data-testid": "image"})
                     hotel["photo"] = photo_elem[
                         "src"] if photo_elem else "https://via.placeholder.com/300x200?text=No+Image"
+
+                    # Reviews count if available
+                    reviews_elem = listing.find("div", {"class": "a3b8729ab1"})
+                    hotel["reviews"] = reviews_elem.text.strip() if reviews_elem else "N/A"
 
                     hotels.append(hotel)
 
@@ -120,7 +133,9 @@ class HotelScraper:
     def get_hotel_details(self, hotel_url):
         """Get detailed information for a specific hotel"""
         try:
-            resp = requests.get(hotel_url, headers=self.headers)
+            # Clean the URL before making the request
+            clean_url = self._clean_url(hotel_url)
+            resp = requests.get(clean_url, headers=self.headers)
             resp.raise_for_status()
             soup = BeautifulSoup(resp.text, 'html.parser')
 
