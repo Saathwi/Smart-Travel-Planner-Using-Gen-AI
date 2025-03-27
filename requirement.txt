@@ -1,0 +1,8 @@
+streamlit
+requests
+beautifulsoup4
+folium
+langchain
+huggingface_hub
+python-dotenv
+bcrypt
