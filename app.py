@@ -4,7 +4,7 @@ from utils.ai_utils import get_response
 from auth import register_user, authenticate_user, load_users
 import re
 import json
-from scraper.makemytrip_fli_scraper import FlightScraper
+from scraper.google_flights_scraper import FlightScraper
 from scraper.hotel_search import show_hotel_search
 from datetime import datetime
 
