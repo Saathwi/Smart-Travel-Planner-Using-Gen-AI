@@ -51,7 +51,7 @@ project:
 5.  **Install all required Python libraries** from the requirements.txt
     file:
 
-    > pip install -r requirements.txt
+    > pip install -r requirement.txt
 
 6.  **Generate the Airport Mapping File** (needed for flights and city
     names):
